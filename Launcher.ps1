@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
 Windows Autopilot Hardware Hash Extraction - OOBE-ready Launcher
+This script detects USB drives, downloads Get-HWID.ps1, dot-sources it, and saves AutopilotHWID.csv.
 #>
 
 # -----------------------------
@@ -37,9 +38,15 @@ try {
 }
 
 # -----------------------------
-# 4. Import the script into the current session
+# 4. Dot-source the script to load functions into current session
 # -----------------------------
-. $scriptPath
+try {
+    . $scriptPath
+    Write-Host "Get-WindowsAutopilotInfo function loaded successfully."
+} catch {
+    Write-Host "Failed to load Get-WindowsAutopilotInfo: $_"
+    exit
+}
 
 # -----------------------------
 # 5. Extract the hardware hash
