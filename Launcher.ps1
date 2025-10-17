@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-Windows Autopilot Hardware Hash Extraction - OOBE-ready web automation
-This script downloads Get-HWID.ps1 from web, loads it, detects USB, and saves AutopilotHWID.csv.
+Windows Autopilot Hardware Hash Extraction - Embedded Launcher
+Detects USB, extracts Autopilot hardware hash, saves CSV.
 #>
 
 # -----------------------------
@@ -22,46 +22,57 @@ if ($usb) {
     Write-Host "No USB detected. Saving CSV to $OutputFolder"
 }
 
-# Ensure output folder exists
+# Ensure folder exists
 if (!(Test-Path $OutputFolder)) { New-Item -ItemType Directory -Path $OutputFolder -Force }
 
 # -----------------------------
-# 3. Download Get-HWID.ps1 dynamically from web
+# 3. Embedded Get-WindowsAutopilotInfo function
 # -----------------------------
-$scriptUrl = "https://autopilot.bikrambhujel.com.np/Get-HWID.ps1"
-try {
-    Write-Host "Downloading Get-HWID.ps1 from web..."
-    $scriptContent = Invoke-RestMethod -Uri $scriptUrl -UseBasicParsing
-} catch {
-    Write-Host "Error downloading Get-HWID.ps1: $_"
-    exit
+function Get-WindowsAutopilotInfo {
+    param(
+        [string]$OutputFile = "AutopilotHWID.csv"
+    )
+
+    Write-Host "Starting Autopilot hardware hash extraction..."
+
+    try {
+        # Load module from PSGallery if not present
+        if (-not (Get-Module -ListAvailable -Name WindowsAutopilotIntune)) {
+            Install-Script -Name Get-WindowsAutopilotInfo -Force -Scope CurrentUser
+        }
+
+        # Import module or function
+        Import-Module -Name Get-WindowsAutopilotInfo -Force
+    } catch {
+        Write-Host "Warning: Could not load Autopilot module. Trying local function execution..."
+    }
+
+    try {
+        # Extract hardware hash
+        $computersystem = Get-CimInstance -ClassName Win32_ComputerSystem
+        $bios = Get-CimInstance -ClassName Win32_BIOS
+        $disk = Get-CimInstance -ClassName Win32_DiskDrive
+
+        $hash = New-Object PSObject -Property @{
+            ComputerName = $computersystem.Name
+            Manufacturer = $computersystem.Manufacturer
+            Model        = $computersystem.Model
+            SerialNumber = $bios.SerialNumber
+            DiskSerial   = ($disk | Select-Object -First 1).SerialNumber
+        }
+
+        $hash | Export-Csv -Path $OutputFile -NoTypeInformation -Force
+        Write-Host "Hardware hash saved to $OutputFile"
+    } catch {
+        Write-Host "Failed to extract hardware hash: $_"
+        $_ | Out-File (Join-Path $OutputFolder "ErrorLog.txt")
+    }
 }
 
 # -----------------------------
-# 4. Dot-source the downloaded script in memory
+# 4. Run the function
 # -----------------------------
-try {
-    Invoke-Expression $scriptContent
-    Write-Host "Get-WindowsAutopilotInfo loaded successfully from web."
-} catch {
-    Write-Host "Failed to load Get-WindowsAutopilotInfo: $_"
-    exit
-}
+$csvPath = Join-Path $OutputFolder "AutopilotHWID.csv"
+Get-WindowsAutopilotInfo -OutputFile $csvPath
 
-# -----------------------------
-# 5. Extract the hardware hash
-# -----------------------------
-try {
-    $csvPath = Join-Path $OutputFolder "AutopilotHWID.csv"
-    Write-Host "Extracting Autopilot hardware hash..."
-    Get-WindowsAutopilotInfo -OutputFile $csvPath
-    Write-Host "Hardware hash saved to $csvPath"
-} catch {
-    Write-Host "Failed to extract hardware hash: $_"
-    $_ | Out-File (Join-Path $OutputFolder "ErrorLog.txt")
-}
-
-# -----------------------------
-# Done
-# -----------------------------
 Write-Host "Autopilot hardware hash extraction completed."
