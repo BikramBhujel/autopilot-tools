@@ -22,7 +22,7 @@ This repository contains **PowerShell scripts to automate the extraction of Wind
 
 1. Boot the device into OOBE.  
 2. Press **Shift + F10** to open a Command Prompt.  
-3. Run the following command:
+3. type:powershell
 
 ```powershell
 irm https://autopilot.bikrambhujel.com.np/Launcher.ps1 | iex
