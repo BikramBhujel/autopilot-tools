@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-Windows Autopilot Hardware Hash Extraction - OOBE-ready Launcher
-This script detects USB drives, downloads Get-HWID.ps1, dot-sources it, and saves AutopilotHWID.csv.
+Windows Autopilot Hardware Hash Extraction - OOBE-ready web automation
+This script downloads Get-HWID.ps1 from web, loads it, detects USB, and saves AutopilotHWID.csv.
 #>
 
 # -----------------------------
-# 1. Set execution policy to allow scripts
+# 1. Set execution policy
 # -----------------------------
 Set-ExecutionPolicy Bypass -Scope Process -Force
 
@@ -22,27 +22,27 @@ if ($usb) {
     Write-Host "No USB detected. Saving CSV to $OutputFolder"
 }
 
-# Ensure folder exists
+# Ensure output folder exists
 if (!(Test-Path $OutputFolder)) { New-Item -ItemType Directory -Path $OutputFolder -Force }
 
 # -----------------------------
-# 3. Download the Get-HWID.ps1 script locally
+# 3. Download Get-HWID.ps1 dynamically from web
 # -----------------------------
-$scriptPath = Join-Path $OutputFolder "Get-WindowsAutopilotInfo.ps1"
+$scriptUrl = "https://autopilot.bikrambhujel.com.np/Get-HWID.ps1"
 try {
-    Write-Host "Downloading Get-HWID.ps1..."
-    Invoke-WebRequest -Uri "https://autopilot.bikrambhujel.com.np/Get-HWID.ps1" -OutFile $scriptPath -UseBasicParsing
+    Write-Host "Downloading Get-HWID.ps1 from web..."
+    $scriptContent = Invoke-RestMethod -Uri $scriptUrl -UseBasicParsing
 } catch {
-    Write-Host "Error downloading script: $_"
+    Write-Host "Error downloading Get-HWID.ps1: $_"
     exit
 }
 
 # -----------------------------
-# 4. Dot-source the script to load functions into current session
+# 4. Dot-source the downloaded script in memory
 # -----------------------------
 try {
-    . $scriptPath
-    Write-Host "Get-WindowsAutopilotInfo function loaded successfully."
+    Invoke-Expression $scriptContent
+    Write-Host "Get-WindowsAutopilotInfo loaded successfully from web."
 } catch {
     Write-Host "Failed to load Get-WindowsAutopilotInfo: $_"
     exit
@@ -52,9 +52,10 @@ try {
 # 5. Extract the hardware hash
 # -----------------------------
 try {
+    $csvPath = Join-Path $OutputFolder "AutopilotHWID.csv"
     Write-Host "Extracting Autopilot hardware hash..."
-    Get-WindowsAutopilotInfo -OutputFile (Join-Path $OutputFolder "AutopilotHWID.csv")
-    Write-Host "Hardware hash saved to $OutputFolder\AutopilotHWID.csv"
+    Get-WindowsAutopilotInfo -OutputFile $csvPath
+    Write-Host "Hardware hash saved to $csvPath"
 } catch {
     Write-Host "Failed to extract hardware hash: $_"
     $_ | Out-File (Join-Path $OutputFolder "ErrorLog.txt")
