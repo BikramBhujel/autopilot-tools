@@ -1,7 +1,12 @@
 <#
 .SYNOPSIS
 Autopilot Hardware Hash Launcher
-Detects USB, installs Get-WindowsAutopilotInfo if missing, extracts hardware hash to CSV.
+Fully automated:
+- Detect USB
+- Install NuGet provider if missing
+- Install PowerShellGet if needed
+- Install/Get-WindowsAutopilotInfo script
+- Export hardware hash CSV
 #>
 
 # -----------------------------
@@ -31,14 +36,48 @@ if (!(Test-Path $OutputFolder)) { New-Item -ItemType Directory -Path $OutputFold
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force
 
 # -----------------------------
-# 4. Ensure Get-WindowsAutopilotInfo is installed locally
+# 4. Ensure NuGet provider is installed
+# -----------------------------
+try {
+    if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
+        Write-Host "NuGet provider not found. Installing..."
+        Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser
+    } else {
+        Write-Host "NuGet provider already installed."
+    }
+    # Trust PSGallery repository
+    Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+} catch {
+    Write-Host "Error installing NuGet provider: $_"
+    $_ | Out-File (Join-Path $OutputFolder "ErrorLog.txt")
+    exit
+}
+
+# -----------------------------
+# 5. Ensure PowerShellGet module is available
+# -----------------------------
+try {
+    if (-not (Get-Module -ListAvailable -Name PowerShellGet)) {
+        Write-Host "Installing/updating PowerShellGet module..."
+        Install-Module -Name PowerShellGet -Force -Scope CurrentUser
+    } else {
+        Write-Host "PowerShellGet module already available."
+    }
+} catch {
+    Write-Host "Error installing PowerShellGet: $_"
+    $_ | Out-File (Join-Path $OutputFolder "ErrorLog.txt")
+    exit
+}
+
+# -----------------------------
+# 6. Ensure Get-WindowsAutopilotInfo script is installed
 # -----------------------------
 try {
     if (-not (Get-Command Get-WindowsAutopilotInfo -ErrorAction SilentlyContinue)) {
-        Write-Host "Get-WindowsAutopilotInfo not found. Installing from PSGallery..."
+        Write-Host "Installing Get-WindowsAutopilotInfo script..."
         Install-Script -Name Get-WindowsAutopilotInfo -Force -Scope CurrentUser
     } else {
-        Write-Host "Get-WindowsAutopilotInfo already installed."
+        Write-Host "Get-WindowsAutopilotInfo script already installed."
     }
 } catch {
     Write-Host "Error installing Get-WindowsAutopilotInfo: $_"
@@ -47,7 +86,7 @@ try {
 }
 
 # -----------------------------
-# 5. Extract Autopilot hardware hash
+# 7. Extract Autopilot hardware hash
 # -----------------------------
 $csvPath = Join-Path $OutputFolder "AutopilotHWID.csv"
 try {
