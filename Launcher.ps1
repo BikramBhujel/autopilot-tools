@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-Windows Autopilot Hardware Hash Extraction - Embedded Launcher
-Detects USB, extracts Autopilot hardware hash, saves CSV.
+Autopilot Hardware Hash Launcher
+Detects USB, installs Get-WindowsAutopilotInfo if missing, extracts hardware hash to CSV.
 #>
 
 # -----------------------------
-# 1. Set execution policy
+# 1. Ensure TLS1.2 for downloads
 # -----------------------------
-Set-ExecutionPolicy Bypass -Scope Process -Force
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 # -----------------------------
 # 2. Detect removable USB drive
@@ -22,57 +22,41 @@ if ($usb) {
     Write-Host "No USB detected. Saving CSV to $OutputFolder"
 }
 
-# Ensure folder exists
+# Create output folder if it doesn't exist
 if (!(Test-Path $OutputFolder)) { New-Item -ItemType Directory -Path $OutputFolder -Force }
 
 # -----------------------------
-# 3. Embedded Get-WindowsAutopilotInfo function
+# 3. Set execution policy for this session
 # -----------------------------
-function Get-WindowsAutopilotInfo {
-    param(
-        [string]$OutputFile = "AutopilotHWID.csv"
-    )
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned -Force
 
-    Write-Host "Starting Autopilot hardware hash extraction..."
-
-    try {
-        # Load module from PSGallery if not present
-        if (-not (Get-Module -ListAvailable -Name WindowsAutopilotIntune)) {
-            Install-Script -Name Get-WindowsAutopilotInfo -Force -Scope CurrentUser
-        }
-
-        # Import module or function
-        Import-Module -Name Get-WindowsAutopilotInfo -Force
-    } catch {
-        Write-Host "Warning: Could not load Autopilot module. Trying local function execution..."
+# -----------------------------
+# 4. Ensure Get-WindowsAutopilotInfo is installed locally
+# -----------------------------
+try {
+    if (-not (Get-Command Get-WindowsAutopilotInfo -ErrorAction SilentlyContinue)) {
+        Write-Host "Get-WindowsAutopilotInfo not found. Installing from PSGallery..."
+        Install-Script -Name Get-WindowsAutopilotInfo -Force -Scope CurrentUser
+    } else {
+        Write-Host "Get-WindowsAutopilotInfo already installed."
     }
-
-    try {
-        # Extract hardware hash
-        $computersystem = Get-CimInstance -ClassName Win32_ComputerSystem
-        $bios = Get-CimInstance -ClassName Win32_BIOS
-        $disk = Get-CimInstance -ClassName Win32_DiskDrive
-
-        $hash = New-Object PSObject -Property @{
-            ComputerName = $computersystem.Name
-            Manufacturer = $computersystem.Manufacturer
-            Model        = $computersystem.Model
-            SerialNumber = $bios.SerialNumber
-            DiskSerial   = ($disk | Select-Object -First 1).SerialNumber
-        }
-
-        $hash | Export-Csv -Path $OutputFile -NoTypeInformation -Force
-        Write-Host "Hardware hash saved to $OutputFile"
-    } catch {
-        Write-Host "Failed to extract hardware hash: $_"
-        $_ | Out-File (Join-Path $OutputFolder "ErrorLog.txt")
-    }
+} catch {
+    Write-Host "Error installing Get-WindowsAutopilotInfo: $_"
+    $_ | Out-File (Join-Path $OutputFolder "ErrorLog.txt")
+    exit
 }
 
 # -----------------------------
-# 4. Run the function
+# 5. Extract Autopilot hardware hash
 # -----------------------------
 $csvPath = Join-Path $OutputFolder "AutopilotHWID.csv"
-Get-WindowsAutopilotInfo -OutputFile $csvPath
+try {
+    Write-Host "Extracting Autopilot hardware hash..."
+    Get-WindowsAutopilotInfo -OutputFile $csvPath
+    Write-Host "Hardware hash saved to $csvPath"
+} catch {
+    Write-Host "Failed to extract hardware hash: $_"
+    $_ | Out-File (Join-Path $OutputFolder "ErrorLog.txt")
+}
 
-Write-Host "Autopilot hardware hash extraction completed."
+Write-Host "Launcher completed successfully."
